@@ -156,7 +156,7 @@ class FM(BaseEstimator, TransformerMixin):
                     variable_parameters *= dim.value
                 total_parameters += variable_parameters
             if self.verbose > 0:
-                print "#params: %d" %total_parameters 
+                print("#params: %d" %total_parameters)
     
     def _init_session(self):
         # adaptively growing video memory
@@ -239,11 +239,11 @@ class FM(BaseEstimator, TransformerMixin):
             init_valid = self.evaluate(Validation_data)
             print("Init: \t train=%.4f, validation=%.4f [%.1f s]" %(init_train, init_valid, time()-t2))
 
-        for epoch in xrange(self.epoch):
+        for epoch in range(self.epoch):
             t1 = time()
             self.shuffle_in_unison_scary(Train_data['X'], Train_data['Y'])
             total_batch = int(len(Train_data['Y']) / self.batch_size)
-            for i in xrange(total_batch):
+            for i in range(total_batch):
                 # generate a batch
                 batch_xs = self.get_random_block_from_data(Train_data, self.batch_size)
                 # Fit training
@@ -264,7 +264,7 @@ class FM(BaseEstimator, TransformerMixin):
                 break
 
         if self.pretrain_flag < 0:
-            print "Save model to file as pretrain."
+            print("Save model to file as pretrain.")
             self.saver.save(self.sess, self.save_file)
 
     def eva_termination(self, valid):

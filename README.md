@@ -36,7 +36,7 @@ cd code
 # train FM model and save as pretrain file
 python FM.py --dataset ml-tag --epoch 100 --pretrain -1 --batch_size 4096 --hidden_factor 256 --lr 0.01 --keep 0.7
 # train AFM model using the pretrained weights from FM
-python AFM.py --dataset ml-tag --epoch 100 --pretrain 1 --batch_size 4096 --hidden_factor [8,256] --keep [1.0,0.5] --lamda_attention 2.0 --lr 0.1
+python AFM.py --dataset ml-tag --epoch 100 --pretrain 2 --batch_size 4096 --hidden_factor [8,256] --keep [1.0,0.5] --lamda_attention 2.0 --lr 0.1
 ```
 The instruction of commands has been clearly stated in the codes (see the parse_args function). 
 
@@ -54,7 +54,7 @@ cd code
 # train FM model with optimal parameters
 python FM.py --dataset ml-tag --epoch 20 --pretrain -1 --batch_size 4096 --hidden_factor 16 --lr 0.01 --keep 0.7
 # train AFM model with optimal parameters
-python AFM.py --dataset ml-tag --epoch 20 --pretrain 1 --batch_size 4096 --hidden_factor [16,16] --keep [1.0,0.5] --lamda_attention 100.0 --lr 0.1
+python AFM.py --dataset ml-tag --epoch 20 --pretrain 2 --batch_size 4096 --hidden_factor [16,16] --keep [1.0,0.5] --lamda_attention 100.0 --lr 0.1
 ```
 After the trainning processes finish, the trained models will be saved into the ***pretrain*** folder, which should be like this:
 * pretrain

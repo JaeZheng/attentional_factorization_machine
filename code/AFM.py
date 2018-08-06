@@ -123,7 +123,7 @@ class AFM(BaseEstimator, TransformerMixin):
             self.element_wise_product = tf.transpose(self.element_wise_product, perm=[1,0,2], name="element_wise_product") # None * (M'*(M'-1)) * K
             self.interactions = tf.reduce_sum(self.element_wise_product, 2, name="interactions")
             # _________ MLP Layer / attention part _____________
-            num_interactions = self.valid_dimension*(self.valid_dimension-1)/2
+            num_interactions = int(self.valid_dimension*(self.valid_dimension-1)/2)
             if self.attention:
                 self.attention_mul = tf.reshape(tf.matmul(tf.reshape(self.element_wise_product, shape=[-1, self.hidden_factor[1]]), \
                     self.weights['attention_W']), shape=[-1, num_interactions, self.hidden_factor[0]])
@@ -133,7 +133,7 @@ class AFM(BaseEstimator, TransformerMixin):
                 # self.attention_out = tf.div(self.attention_exp, self.attention_sum, name="attention_out") # None * (M'*(M'-1)) * 1
                 self.attention_relu = tf.reduce_sum(tf.multiply(self.weights['attention_p'], tf.nn.relu(self.attention_mul + \
                     self.weights['attention_b'])), 2, keep_dims=True) # None * (M'*(M'-1)) * 1
-                self.attention_out = tf.nn.softmax(self.attention_relu)
+                self.attention_out = tf.nn.softmax(self.attention_relu, name="attention_out")
                 self.attention_out = tf.nn.dropout(self.attention_out, self.dropout_keep[0]) # dropout
             
             # _________ Attention-aware Pairwise Interaction Layer _____________
@@ -187,7 +187,7 @@ class AFM(BaseEstimator, TransformerMixin):
                     variable_parameters *= dim.value
                 total_parameters += variable_parameters
             if self.verbose > 0:
-                print "#params: %d" %total_parameters 
+                print("#params: %d" %total_parameters)
     
     def _init_session(self):
         # adaptively growing video memory
@@ -302,11 +302,11 @@ class AFM(BaseEstimator, TransformerMixin):
             init_valid = self.evaluate(Validation_data)
             print("Init: \t train=%.4f, validation=%.4f [%.1f s]" %(init_train, init_valid, time()-t2))
 
-        for epoch in xrange(self.epoch):
+        for epoch in range(self.epoch):
             t1 = time()
             self.shuffle_in_unison_scary(Train_data['X'], Train_data['Y'])
             total_batch = int(len(Train_data['Y']) / self.batch_size)
-            for i in xrange(total_batch):
+            for i in range(total_batch):
                 # generate a batch
                 batch_xs = self.get_random_block_from_data(Train_data, self.batch_size)
                 # Fit training
@@ -329,7 +329,7 @@ class AFM(BaseEstimator, TransformerMixin):
                 break
 
         if self.pretrain_flag < 0 or self.pretrain_flag == 2:
-            print "Save model to file as pretrain."
+            print("Save model to file as pretrain at PATH: %s." % (self.save_file))
             self.saver.save(self.sess, self.save_file)
 
     def eva_termination(self, valid):
@@ -367,7 +367,7 @@ class AFM(BaseEstimator, TransformerMixin):
         return RMSE
 
 def make_save_file(args):
-    pretrain_path = '../pretrain/%s_%d' %(args.dataset, eval(args.hidden_factor)[1])
+    pretrain_path = '../pretrain/afm_%s_%d' %(args.dataset, eval(args.hidden_factor)[1])
     if args.mla:
         pretrain_path += '_mla'
     if not os.path.exists(pretrain_path):
@@ -420,9 +420,9 @@ def evaluate(args):
     pretrain_graph = tf.get_default_graph()
     # load tensors 
     # feature_embeddings = pretrain_graph.get_tensor_by_name('feature_embeddings:0')
-    # feature_bias = pretrain_graph.get_tensor_by_name('feature_bias:0')
-    # bias = pretrain_graph.get_tensor_by_name('bias:0')
-    # afm = pretrain_graph.get_tensor_by_name('afm:0')
+    feature_bias = pretrain_graph.get_tensor_by_name('feature_bias:0')
+    bias = pretrain_graph.get_tensor_by_name('bias:0')
+    afm = pretrain_graph.get_tensor_by_name('afm:0')
     out_of_afm = pretrain_graph.get_tensor_by_name('out_afm:0')
     interactions = pretrain_graph.get_tensor_by_name('interactions:0')
     attention_out = pretrain_graph.get_tensor_by_name('attention_out:0')
@@ -488,8 +488,6 @@ def evaluate(args):
                           ao[_id][1], inter[_id][1], \
                           ao[_id][2], inter[_id][2], y_pred_afm[_id]))
 
-
-    
 
 if __name__ == '__main__':
     args = parse_args()

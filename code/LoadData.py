@@ -107,13 +107,13 @@ class LoadData(object):
         Make sure each feature vector is of the same length
         """
         num_variable = len(self.Train_data['X'][0])
-        for i in xrange(len(self.Train_data['X'])):
+        for i in range(len(self.Train_data['X'])):
             num_variable = min([num_variable, len(self.Train_data['X'][i])])
         # truncate train, validation and test
-        for i in xrange(len(self.Train_data['X'])):
+        for i in range(len(self.Train_data['X'])):
             self.Train_data['X'][i] = self.Train_data['X'][i][0:num_variable]
-        for i in xrange(len(self.Validation_data['X'])):
+        for i in range(len(self.Validation_data['X'])):
             self.Validation_data['X'][i] = self.Validation_data['X'][i][0:num_variable]
-        for i in xrange(len(self.Test_data['X'])):
+        for i in range(len(self.Test_data['X'])):
             self.Test_data['X'][i] = self.Test_data['X'][i][0:num_variable]
         return num_variable
