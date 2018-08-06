@@ -329,7 +329,6 @@ class AFM(BaseEstimator, TransformerMixin):
                 break
 
         if self.pretrain_flag < 0 or self.pretrain_flag == 2:
-            print("Save model to file as pretrain at PATH: %s." % (self.save_file))
             self.saver.save(self.sess, self.save_file)
 
     def eva_termination(self, valid):

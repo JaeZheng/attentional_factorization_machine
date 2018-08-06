@@ -72,7 +72,7 @@ After the trainning processes finish, the trained models will be saved into the 
 Now it's time to evaluate the pretrained models with the test datasets, which can be done by running ***AFM.py*** and ***FM.py*** with ***--process evaluate*** as follows:
 ```
 # evaluate the pretrained FM model
-python FM.py --dataset ml-tag --epoch 20 --batch_size 4096 --lr 0.01 --keep 0.7 --process evaluate
+python FM.py --dataset ml-tag --epoch 20 --batch_size 4096 --hidden_factor 16 --lr 0.01 --keep 0.7 --process evaluate
 # evaluate the pretrained AFM model
 python AFM.py --dataset ml-tag --epoch 20 --pretrain 1 --batch_size 4096 --hidden_factor [16,16] --keep [1.0,0.5] --lamda_attention 100.0 --lr 0.1 --process evaluate
 ```
