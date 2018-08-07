@@ -9,6 +9,8 @@ Hao Ye (tonyfd26@gmail.com)
 '''
 import math
 import os
+os.environ["CUDA_VISIBLE_DEVICES"]="-1"
+import gc
 import numpy as np
 import tensorflow as tf
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -83,7 +85,7 @@ class FM(BaseEstimator, TransformerMixin):
         Init a tensorflow Graph containing: input data, variables, model, loss, optimizer
         '''
         self.graph = tf.Graph()
-        with self.graph.as_default():  # , tf.device('/cpu:0'):
+        with self.graph.as_default():  # ,tf.device('/cpu:0'):
             # Set graph level random seed
             tf.set_random_seed(self.random_seed)
             # Input data.
@@ -225,6 +227,15 @@ class FM(BaseEstimator, TransformerMixin):
             else:
                 break
         return {'X': X, 'Y': Y}
+        # data = np.array(data['X'])
+        # data_size = len(data['X'])
+        # # 每个epoch有多少个batch
+        # num_batches_per_epoch = int((len(data['X']) - 1) / batch_size) + 1
+        # for batch_num in range(num_batches_per_epoch):
+        #     # gc.collect()
+        #     start_index = batch_num * batch_size
+        #     end_index = min((batch_num + 1) * batch_size, data_size)
+        #     yield {data['X'][start_index:end_index], data['Y'][start_index:end_index]}
 
     def shuffle_in_unison_scary(self, a, b): # shuffle two lists simutaneously
         rng_state = np.random.get_state()
@@ -232,13 +243,13 @@ class FM(BaseEstimator, TransformerMixin):
         np.random.set_state(rng_state)
         np.random.shuffle(b)
 
-    def train(self, Train_data, Validation_data, Test_data):  # fit a dataset
+    def train(self, Train_data, Validation_data):  # fit a dataset
         # Check Init performance
         if self.verbose > 0:
             t2 = time()
-            init_train = self.evaluate_auc(Train_data)
-            init_valid = self.evaluate_auc(Validation_data)
-            print("Init: \t train=%.4f, validation=%.4f [%.1f s]" %(init_train, init_valid, time()-t2))
+            # init_train = self.evaluate_auc(Train_data)
+            # init_valid = self.evaluate_auc(Validation_data)
+            # print("Init: \t train=%.4f, validation=%.4f [%.1f s]" %(init_train, init_valid, time()-t2))
 
         for epoch in range(self.epoch):
             t1 = time()
@@ -249,6 +260,10 @@ class FM(BaseEstimator, TransformerMixin):
                 batch_xs = self.get_random_block_from_data(Train_data, self.batch_size)
                 # Fit training
                 self.partial_fit(batch_xs)
+            # batch_xs = self.get_random_block_from_data(Train_data, self.batch_size)
+            # for batch_x in batch_xs:
+            #     # gc.collect()
+            #     self.partial_fit(batch_x)
             t2 = time()
             
             # output validation
@@ -308,15 +323,19 @@ def make_save_file(args):
 
 def train(args):
     # Data loading
-    data = DATA.LoadCTRData(args.path, args.dataset)
+    # data = DATA.LoadCTRData(args.path, args.dataset)
     if args.verbose > 0:
         print("FM: dataset=%s, factors=%d, #epoch=%d, batch=%d, lr=%.4f, lambda=%.1e, keep=%.2f, optimizer=%s, batch_norm=%d"
               %(args.dataset, args.hidden_factor, args.epoch, args.batch_size, args.lr, args.lamda, args.keep, args.optimizer, args.batch_norm))
 
     # Training
     t1 = time()
-    model = FM(data.features_M, args.pretrain, make_save_file(args), args.hidden_factor, args.epoch, args.batch_size, args.lr, args.lamda, args.keep, args.optimizer, args.batch_norm, args.verbose, args.mla)
-    model.train(data.Train_data, data.Validation_data, data.Test_data)
+    model = FM(89471, args.pretrain, make_save_file(args), args.hidden_factor, args.epoch, args.batch_size, args.lr, args.lamda, args.keep, args.optimizer, args.batch_norm, args.verbose, args.mla)
+
+    for i in range(9):
+        data = DATA.LoadCTRData(args.path, args.dataset, i)
+        model.train(data.Train_data, data.Validation_data)
+        gc.collect()
     
     # Find the best validation result across iterations
     # best_valid_score = 0
@@ -377,7 +396,6 @@ def evaluate(args):
 
     auc = roc_auc_score(y_true, y_pred)
     print("Test AUC: %.4f"%(auc))
-
 
 
 if __name__ == '__main__':

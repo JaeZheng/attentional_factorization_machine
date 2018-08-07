@@ -24,13 +24,13 @@ class LoadCTRData(object):
     '''
 
     # Three files are needed in the path
-    def __init__(self, path, dataset, loss_type="square_loss"):
+    def __init__(self, path, dataset, index, loss_type="square_loss"):
         self.path = path + dataset + "/"
-        self.trainfile = self.path + dataset + ".train.libfm"
+        self.trainfile = self.path + dataset + ".train.libfm_%d"%(index)
         self.testfile = self.path + dataset + ".test.libfm"
         self.validationfile = self.path + dataset + ".validation.libfm"
         self.features_M = self.map_features()
-        self.Train_data, self.Validation_data, self.Test_data = self.construct_data(loss_type)
+        self.Train_data, self.Validation_data = self.construct_data(loss_type)
 
     def map_features(self):  # map the feature entries in all files, kept in self.features dictionary
         self.features = {}
@@ -68,14 +68,15 @@ class LoadCTRData(object):
             Validation_data = self.construct_dataset(X_, Y_)
         # print("Number of samples in Validation:", len(Y_))
 
-        X_, Y_, Y_for_logloss = self.read_data(self.testfile)
-        if loss_type == 'log_loss':
-            Test_data = self.construct_dataset(X_, Y_for_logloss)
-        else:
-            Test_data = self.construct_dataset(X_, Y_)
-        # print("Number of samples in Test:", len(Y_))
+        # X_, Y_, Y_for_logloss = self.read_data(self.testfile)
+        # if loss_type == 'log_loss':
+        #     Test_data = self.construct_dataset(X_, Y_for_logloss)
+        # else:
+        #     Test_data = self.construct_dataset(X_, Y_)
+        # # print("Number of samples in Test:", len(Y_))
 
-        return Train_data, Validation_data, Test_data
+        # return Train_data, Validation_data, Test_data
+        return Train_data, Validation_data
 
     def read_data(self, file):
         # read a data file. For a row, the first column goes into Y_;
