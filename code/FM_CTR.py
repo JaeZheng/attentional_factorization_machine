@@ -58,7 +58,7 @@ def parse_args():
 
 class FM(BaseEstimator, TransformerMixin):
     def __init__(self, features_M, pretrain_flag, save_file, hidden_factor, epoch, batch_size, learning_rate, lamda_bilinear, keep,
-                 optimizer_type, batch_norm, verbose, micro_level_analysis, random_seed=2016):
+                 optimizer_type, batch_norm, verbose, micro_level_analysis, path, dataset, random_seed=2016):
         # bind params to class
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -76,6 +76,8 @@ class FM(BaseEstimator, TransformerMixin):
         self.micro_level_analysis = micro_level_analysis
         # performance of each epoch
         self.train_rmse, self.valid_rmse, self.test_rmse = [], [], []
+        self.path = path
+        self.dataset = dataset
 
         # init all variables in a tensorflow graph
         self._init_graph()
@@ -227,15 +229,6 @@ class FM(BaseEstimator, TransformerMixin):
             else:
                 break
         return {'X': X, 'Y': Y}
-        # data = np.array(data['X'])
-        # data_size = len(data['X'])
-        # # 每个epoch有多少个batch
-        # num_batches_per_epoch = int((len(data['X']) - 1) / batch_size) + 1
-        # for batch_num in range(num_batches_per_epoch):
-        #     # gc.collect()
-        #     start_index = batch_num * batch_size
-        #     end_index = min((batch_num + 1) * batch_size, data_size)
-        #     yield {data['X'][start_index:end_index], data['Y'][start_index:end_index]}
 
     def shuffle_in_unison_scary(self, a, b): # shuffle two lists simutaneously
         rng_state = np.random.get_state()
@@ -243,45 +236,95 @@ class FM(BaseEstimator, TransformerMixin):
         np.random.set_state(rng_state)
         np.random.shuffle(b)
 
-    def train(self, Train_data, Validation_data):  # fit a dataset
+    def read_features(self, file):
+        with open(file) as f:
+            line = f.readline()
+            i = len(self.features)
+            while line:
+                items = line.split("\t")[1].split(",")
+                for item in items:
+                    if item not in self.features:
+                        self.features[item] = i
+                        i = i + 1
+                line = f.readline()
+
+    def read_ctr_data(self, train_data_dir, file):
+        with open(train_data_dir + file, 'r') as f:
+            X_ = []
+            Y_ = []
+            line = f.readline()
+            while line:
+                items = line.strip().split("\t")
+                Y_.append(1.0 * float(items[-1]))
+                X_.append([self.features[item] for item in items[1].split(",")])
+                line = f.readline()
+            return X_, Y_
+
+    def construct_dataset(self, X_, Y_):
+        Data_Dic = {}
+        X_lens = [len(line) for line in X_]
+        indexs = np.argsort(X_lens)
+        Data_Dic['Y'] = [Y_[i] for i in indexs]
+        Data_Dic['X'] = [X_[i] for i in indexs]
+        return Data_Dic
+
+    def map_features(self):
+        self.features = {}
+        path = args.path + args.dataset + "/"
+        trainfile = path + args.dataset + ".train.libfm"
+        validationfile = path + args.dataset + ".validation.libfm"
+        self.read_features(trainfile)
+        self.read_features(validationfile)
+
+    def train_batch_generator(self):
+        train_data_dir = self.path + self.dataset + "/train/"
+        files = sorted(os.listdir(train_data_dir))
+        self.map_features()
+        for file in files:
+            print('Reading file {0}......'.format(file))
+            gc.collect()
+            X_, Y_ = self.read_ctr_data(train_data_dir, file)
+            data = self.construct_dataset(X_, Y_)
+            yield data
+
+    def get_validation_data(self):
+        valid_data_dir = args.path + args.dataset + "/"
+        X_, Y_ = self.read_ctr_data(valid_data_dir, self.dataset + ".validation.libfm")
+        return self.construct_dataset(X_, Y_)
+
+    def train(self):  # fit a dataset
         # Check Init performance
-        if self.verbose > 0:
-            t2 = time()
-            # init_train = self.evaluate_auc(Train_data)
-            # init_valid = self.evaluate_auc(Validation_data)
-            # print("Init: \t train=%.4f, validation=%.4f [%.1f s]" %(init_train, init_valid, time()-t2))
+        # if self.verbose > 0:
+        #     t2 = time()
+        #     init_train = self.evaluate_auc(Train_data)
+        #     init_valid = self.evaluate_auc(Validation_data)
+        #     print("Init: \t train=%.4f, validation=%.4f [%.1f s]" %(init_train, init_valid, time()-t2))
 
         for epoch in range(self.epoch):
             t1 = time()
-            self.shuffle_in_unison_scary(Train_data['X'], Train_data['Y'])
-            total_batch = int(len(Train_data['Y']) / self.batch_size)
-            for i in range(total_batch):
-                # generate a batch
-                batch_xs = self.get_random_block_from_data(Train_data, self.batch_size)
-                # Fit training
-                self.partial_fit(batch_xs)
-            # batch_xs = self.get_random_block_from_data(Train_data, self.batch_size)
-            # for batch_x in batch_xs:
-            #     # gc.collect()
-            #     self.partial_fit(batch_x)
+            for Train_data in self.train_batch_generator():
+                self.shuffle_in_unison_scary(Train_data['X'], Train_data['Y'])
+                total_batch = int(len(Train_data['Y']) / self.batch_size)
+                for i in range(total_batch):
+                    # generate a batch
+                    batch_xs = self.get_random_block_from_data(Train_data, self.batch_size)
+                    # Fit training
+                    self.partial_fit(batch_xs)
             t2 = time()
-            
-            # output validation
-            train_result = self.evaluate_auc(Train_data)
-            valid_result = self.evaluate_auc(Validation_data)
 
-            self.train_rmse.append(train_result)
+            Validation_data = self.get_validation_data()
+            valid_result = self.evaluate_auc(Validation_data)
             self.valid_rmse.append(valid_result)
 
             if self.verbose > 0 and epoch%self.verbose == 0:
-                print("Epoch %d [%.1f s]\ttrain=%.4f, validation=%.4f [%.1f s]"
-                      %(epoch+1, t2-t1, train_result, valid_result, time()-t2))
+                print("Epoch %d [%.1f s]\tvalidation_auc=%.4f [%.1f s]"
+                      %(epoch+1, t2-t1, valid_result, time()-t2))
             # if self.eva_termination(self.valid_rmse):
             #     break
 
-        if self.pretrain_flag < 0:
-            print("Save model to file as pretrain.")
-            self.saver.save(self.sess, self.save_file)
+            if self.pretrain_flag < 0 and epoch > 4:
+                print("Save model to file as pretrain.")
+                self.saver.save(self.sess, self.save_file + "_%d" % epoch)
 
     def eva_termination(self, valid):
         if len(valid) > 5:
@@ -330,12 +373,10 @@ def train(args):
 
     # Training
     t1 = time()
-    model = FM(89471, args.pretrain, make_save_file(args), args.hidden_factor, args.epoch, args.batch_size, args.lr, args.lamda, args.keep, args.optimizer, args.batch_norm, args.verbose, args.mla)
+    model = FM(89471, args.pretrain, make_save_file(args), args.hidden_factor, args.epoch, args.batch_size, args.lr,
+               args.lamda, args.keep, args.optimizer, args.batch_norm, args.verbose, args.mla,args.path, args.dataset)
 
-    for i in range(9):
-        data = DATA.LoadCTRData(args.path, args.dataset, i)
-        model.train(data.Train_data, data.Validation_data)
-        gc.collect()
+    model.train()
     
     # Find the best validation result across iterations
     # best_valid_score = 0
