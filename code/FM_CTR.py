@@ -9,7 +9,7 @@ Hao Ye (tonyfd26@gmail.com)
 '''
 import math
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="-1"
+# os.environ["CUDA_VISIBLE_DEVICES"]="-1"
 import gc
 import numpy as np
 import tensorflow as tf
@@ -47,7 +47,7 @@ def parse_args():
                     help='Keep probility (1-dropout) for the bilinear interaction layer. 1: no dropout')
     parser.add_argument('--lr', type=float, default=0.01,
                         help='Learning rate.')
-    parser.add_argument('--optimizer', nargs='?', default='AdagradOptimizer',
+    parser.add_argument('--optimizer', nargs='?', default='AdamOptimizer',
                         help='Specify an optimizer type (AdamOptimizer, AdagradOptimizer, GradientDescentOptimizer, MomentumOptimizer).')
     parser.add_argument('--verbose', type=int, default=1,
                         help='Whether to show the performance of each epoch (0 or 1)')
@@ -129,12 +129,15 @@ class FM(BaseEstimator, TransformerMixin):
                 self.Feature_bias = tf.reduce_sum(tf.nn.embedding_lookup(self.weights['feature_bias'], self.train_features) , 1)  # None * 1
                 Bias = self.weights['bias'] * tf.ones_like(self.train_labels)  # None * 1
                 self.out = tf.add_n([Bilinear, self.Feature_bias, Bias], name="out")  # None * 1
+                self.prediction = tf.sigmoid(self.out, name="prediction")  # None * 1
 
             # Compute the square loss.
             if self.lamda_bilinear > 0:
-                self.loss = tf.nn.l2_loss(tf.subtract(self.train_labels, self.out)) + tf.contrib.layers.l2_regularizer(self.lamda_bilinear)(self.weights['feature_embeddings'])  # regulizer
+                # self.loss = tf.nn.l2_loss(tf.subtract(self.train_labels, self.prediction)) + tf.contrib.layers.l2_regularizer(self.lamda_bilinear)(self.weights['feature_embeddings'])  # regulizer
+                self.loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.train_labels, logits=self.out) + tf.contrib.layers.l2_regularizer(self.lamda_bilinear)(self.weights['feature_embeddings'])  # regulizer
             else:
-                self.loss = tf.nn.l2_loss(tf.subtract(self.train_labels, self.out))
+                # self.loss = tf.nn.l2_loss(tf.subtract(self.train_labels, self.prediction))
+                self.loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.train_labels, logits=self.out)
 
             # Optimizer.
             if self.optimizer_type == 'AdamOptimizer':
@@ -236,17 +239,17 @@ class FM(BaseEstimator, TransformerMixin):
         np.random.set_state(rng_state)
         np.random.shuffle(b)
 
-    def read_features(self, file):
-        with open(file) as f:
-            line = f.readline()
-            i = len(self.features)
-            while line:
-                items = line.split("\t")[1].split(",")
-                for item in items:
-                    if item not in self.features:
-                        self.features[item] = i
-                        i = i + 1
-                line = f.readline()
+    # def read_features(self, file):
+    #     with open(file) as f:
+    #         line = f.readline()
+    #         i = len(self.features)
+    #         while line:
+    #             items = line.split("\t")[1].split(",")
+    #             for item in items:
+    #                 if item not in self.features:
+    #                     self.features[item] = i
+    #                     i = i + 1
+    #             line = f.readline()
 
     def read_ctr_data(self, train_data_dir, file):
         with open(train_data_dir + file, 'r') as f:
@@ -255,8 +258,8 @@ class FM(BaseEstimator, TransformerMixin):
             line = f.readline()
             while line:
                 items = line.strip().split("\t")
-                Y_.append(1.0 * float(items[-1]))
-                X_.append([self.features[item] for item in items[1].split(",")])
+                Y_.append(float(items[-1]))
+                X_.append([int(item) for item in items[1].split(",")])
                 line = f.readline()
             return X_, Y_
 
@@ -268,18 +271,18 @@ class FM(BaseEstimator, TransformerMixin):
         Data_Dic['X'] = [X_[i] for i in indexs]
         return Data_Dic
 
-    def map_features(self):
-        self.features = {}
-        path = args.path + args.dataset + "/"
-        trainfile = path + args.dataset + ".train.libfm"
-        validationfile = path + args.dataset + ".validation.libfm"
-        self.read_features(trainfile)
-        self.read_features(validationfile)
+    # def map_features(self):
+    #     self.features = {}
+    #     train_data_dir = self.path + "train/"
+    #     files = sorted(os.listdir(train_data_dir))
+    #     for file in files:
+    #         self.read_features(file)
+    #     validationfile = self.path + args.dataset + ".validation.libfm"
+    #     self.read_features(validationfile)
 
     def train_batch_generator(self):
         train_data_dir = self.path + self.dataset + "/train/"
         files = sorted(os.listdir(train_data_dir))
-        self.map_features()
         for file in files:
             print('Reading file {0}......'.format(file))
             gc.collect()
@@ -322,7 +325,7 @@ class FM(BaseEstimator, TransformerMixin):
             # if self.eva_termination(self.valid_rmse):
             #     break
 
-            if self.pretrain_flag < 0 and epoch > 4:
+            if self.pretrain_flag < 0 and epoch > 0:
                 print("Save model to file as pretrain.")
                 self.saver.save(self.sess, self.save_file + "_%d" % epoch)
 
@@ -345,14 +348,20 @@ class FM(BaseEstimator, TransformerMixin):
         return RMSE
 
     def evaluate_auc(self, data):  # evaluate the results for an input set
-        num_example = len(data['Y'])
-        feed_dict = {self.train_features: data['X'], self.train_labels: [[y] for y in data['Y']],
+        total_batch = int(len(data['Y']) / self.batch_size)
+        auc_list = []
+        for i in range(total_batch):
+            # generate a batch
+            batch_xs = self.get_random_block_from_data(data, self.batch_size)
+            num_example = len(batch_xs['Y'])
+            feed_dict = {self.train_features: batch_xs['X'], self.train_labels: batch_xs['Y'],
                      self.dropout_keep: 1.0, self.train_phase: False}
-        predictions = self.sess.run((self.out), feed_dict=feed_dict)
-        y_pred = np.reshape(predictions, (num_example,))
-        y_true = np.reshape(data['Y'], (num_example,))
+            predictions = self.sess.run(self.prediction, feed_dict=feed_dict)
+            y_pred = np.reshape(predictions, (num_example,))
+            y_true = np.reshape(batch_xs['Y'], (num_example,))
+            auc_list.append(roc_auc_score(y_true, y_pred))
 
-        return roc_auc_score(y_true, y_pred)
+        return np.mean(auc_list)
 
 
 def make_save_file(args):
@@ -373,7 +382,7 @@ def train(args):
 
     # Training
     t1 = time()
-    model = FM(89471, args.pretrain, make_save_file(args), args.hidden_factor, args.epoch, args.batch_size, args.lr,
+    model = FM(89477, args.pretrain, make_save_file(args), args.hidden_factor, args.epoch, args.batch_size, args.lr,
                args.lamda, args.keep, args.optimizer, args.batch_norm, args.verbose, args.mla,args.path, args.dataset)
 
     model.train()
