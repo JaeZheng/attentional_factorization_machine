@@ -30,7 +30,7 @@ def parse_args():
                         help='Process type: train, evaluate.')
     parser.add_argument('--mla', type=int, default=0,
                         help='Set the experiment mode to be Micro Level Analysis or not: 0-disable, 1-enable.')
-    parser.add_argument('--path', nargs='?', default='../data/',
+    parser.add_argument('--path', nargs='?', default='../data/old/',
                         help='Input data path.')
     parser.add_argument('--dataset', nargs='?', default='ml-tag',
                         help='Choose a dataset.')
@@ -54,7 +54,7 @@ def parse_args():
                         help='Learning rate.')
     parser.add_argument('--freeze_fm', type=int, default=0,
                         help='Freese all params of fm and learn attention params only.')
-    parser.add_argument('--optimizer', nargs='?', default='AdagradOptimizer',
+    parser.add_argument('--optimizer', nargs='?', default='AdamOptimizer',
                         help='Specify an optimizer type (AdamOptimizer, AdagradOptimizer, GradientDescentOptimizer, MomentumOptimizer).')
     parser.add_argument('--verbose', type=int, default=1,
                         help='Whether to show the performance of each epoch (0 or 1)')
@@ -174,11 +174,12 @@ class AFM(BaseEstimator, TransformerMixin):
                     tf.nn.embedding_lookup(self.weights['feature_bias'], self.train_features), 1)  # None * 1
                 Bias = self.weights['bias'] * tf.ones_like(self.train_labels)  # None * 1
                 self.out = tf.add_n([Bilinear, self.Feature_bias, Bias], name="out_afm")  # None * 1
+                self.pred = tf.sigmoid(self.out, name="final_predictions")
 
             # Compute the loss.
             if self.attention and self.lamda_attention > 0:
-                self.loss = tf.nn.l2_loss(tf.subtract(self.train_labels, self.out)) + tf.contrib.layers.l2_regularizer(
-                    self.lamda_attention)(self.weights['attention_W'])  # regulizer
+                self.loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.train_labels, logits=self.out) + \
+                            tf.contrib.layers.l2_regularizer(self.lamda_attention)(self.weights['attention_W'])  # regulizer
             else:
                 self.loss = tf.nn.l2_loss(tf.subtract(self.train_labels, self.out))
 
@@ -324,17 +325,17 @@ class AFM(BaseEstimator, TransformerMixin):
         np.random.set_state(rng_state)
         np.random.shuffle(b)
 
-    def read_features(self, file):
-        with open(file) as f:
-            line = f.readline()
-            i = len(self.features)
-            while line:
-                items = line.split("\t")[1].split(",")
-                for item in items:
-                    if item not in self.features:
-                        self.features[item] = i
-                        i = i + 1
-                line = f.readline()
+    # def read_features(self, file):
+    #     with open(file) as f:
+    #         line = f.readline()
+    #         i = len(self.features)
+    #         while line:
+    #             items = line.split("\t")[1].split(",")
+    #             for item in items:
+    #                 if item not in self.features:
+    #                     self.features[item] = i
+    #                     i = i + 1
+    #             line = f.readline()
 
     def read_ctr_data(self, train_data_dir, file):
         with open(train_data_dir + file, 'r') as f:
@@ -344,7 +345,7 @@ class AFM(BaseEstimator, TransformerMixin):
             while line:
                 items = line.strip().split("\t")
                 Y_.append(1.0 * float(items[-1]))
-                X_.append([self.features[item] for item in items[1].split(",")])
+                X_.append([int(item) for item in items[1].split(",")])
                 line = f.readline()
             return X_, Y_
 
@@ -356,18 +357,18 @@ class AFM(BaseEstimator, TransformerMixin):
         Data_Dic['X'] = [X_[i] for i in indexs]
         return Data_Dic
 
-    def map_features(self):
-        self.features = {}
-        path = args.path + args.dataset + "/"
-        trainfile = path + args.dataset + ".train.libfm"
-        validationfile = path + args.dataset + ".validation.libfm"
-        self.read_features(trainfile)
-        self.read_features(validationfile)
+    # def map_features(self):
+    #     self.features = {}
+    #     path = args.path + args.dataset + "/"
+    #     trainfile = path + args.dataset + ".train.libfm"
+    #     validationfile = path + args.dataset + ".validation.libfm"
+    #     self.read_features(trainfile)
+    #     self.read_features(validationfile)
 
     def train_batch_generator(self):
         train_data_dir = self.path + self.dataset + "/train/"
         files = sorted(os.listdir(train_data_dir))
-        self.map_features()
+        # self.map_features()
         for file in files:
             print('Reading file {0}......'.format(file))
             gc.collect()
@@ -409,7 +410,7 @@ class AFM(BaseEstimator, TransformerMixin):
             if self.verbose > 0 and epoch % self.verbose == 0:
                 print("Epoch %d [%.1f s]\t validation=%.6f [%.1f s]"
                       % (epoch + 1, t2 - t1, valid_result, time() - t2))
-            if epoch > 3:
+            if epoch > 0:
                 if self.pretrain_flag < 0 or self.pretrain_flag == 2:
                     self.saver.save(self.sess, self.save_file + "_%d" % (epoch + 1))
 
@@ -468,7 +469,7 @@ class AFM(BaseEstimator, TransformerMixin):
             num_batch = len(batch_xs['Y'])
             feed_dict = {self.train_features: batch_xs['X'], self.train_labels: [[y] for y in batch_xs['Y']],
                          self.dropout_keep: list(1.0 for i in range(len(self.keep))), self.train_phase: False}
-            a_out, batch_out = self.sess.run((self.attention_out, self.out), feed_dict=feed_dict)
+            a_out, batch_out = self.sess.run((self.attention_out, self.pred), feed_dict=feed_dict)
 
             if batch_index == 0:
                 y_pred = np.reshape(batch_out, (num_batch,))
@@ -517,7 +518,7 @@ def train(args):
     # num_variable = data.truncate_features()
     if args.mla:
         args.freeze_fm = 1
-    model = AFM(89471, args.pretrain, save_file, args.attention, eval(args.hidden_factor), args.valid_dimen,
+    model = AFM(89477, args.pretrain, save_file, args.attention, eval(args.hidden_factor), args.valid_dimen,
                 activation_function, 0, args.freeze_fm, args.epoch, args.batch_size, args.lr, args.lamda_attention,
                 eval(args.keep), args.optimizer,
                 args.batch_norm, args.decay, args.verbose, args.mla, args.path, args.dataset)
