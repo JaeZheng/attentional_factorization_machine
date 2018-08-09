@@ -396,8 +396,8 @@ def train(args):
     best_valid_score = 0
     best_valid_score = max(model.valid_rmse)
     best_epoch = model.valid_rmse.index(best_valid_score)
-    print("Best Iter(validation)= %d\t train_auc = %.4f, valid_auc= %.4f [%.1f s]"
-          % (best_epoch + 1, model.train_rmse[best_epoch], model.valid_rmse[best_epoch], time() - t1))
+    print("Best Iter(validation)= %d\t valid_auc= %.4f [%.1f s]"
+          % (best_epoch + 1, model.valid_rmse[best_epoch], time() - t1))
 
 def evaluate(args):
     # load test data

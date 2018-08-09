@@ -66,6 +66,7 @@ class LoadCTRData(object):
             Validation_data = self.construct_dataset(X_, Y_for_logloss)
         else:
             Validation_data = self.construct_dataset(X_, Y_)
+
         # print("Number of samples in Validation:", len(Y_))
 
         # X_, Y_, Y_for_logloss = self.read_data(self.testfile)
